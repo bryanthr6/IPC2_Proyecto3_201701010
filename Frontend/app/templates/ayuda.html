@@ -1,0 +1,54 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ayuda</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="flex h-screen bg-gray-100 dark:bg-gray-900 font-sans justify-center items-center">
+    {% include 'sidebar.html' %} <!-- Incluir el sidebar -->
+
+    <main role="main" class="flex flex-col items-center p-4">
+        <h1 class="text-3xl font-bold mb-6 text-center text-white">Ayuda</h1>
+
+        <!-- Botones -->
+        <div class="space-x-4 mb-4">
+            <button onclick="showStudentData()" class="bg-blue-500 text-white font-bold py-2 px-4 rounded hover:bg-blue-600">
+                Datos Estudiante
+            </button>
+            <button onclick="openPDF()" class="bg-green-500 text-white font-bold py-2 px-4 rounded hover:bg-green-600">
+                Documentación
+            </button>
+        </div>
+
+        <!-- Datos del estudiante (oculto inicialmente) -->
+        <div id="studentData" class="hidden mt-4">
+            <textarea readonly class="w-80 h-24 p-2 border rounded-md bg-gray-200 text-sm">
+Introducción a la Programación y Computación 2
+Carnet: 201701010
+Nombre: Bryant Herrera Rubio
+            </textarea>
+        </div>
+
+        <!-- Contenedor para el PDF (oculto inicialmente) -->
+        <div id="pdfContainer" class="hidden mt-4 w-full">
+            <embed id="pdfEmbed" type="application/pdf" src="{% static 'Documentacion/ensayo.pdf' %}" class="w-full" height="750">
+        </div>
+    </main>
+
+    <script>
+        function showStudentData() {
+            document.getElementById('studentData').classList.remove('hidden');
+            document.getElementById('pdfContainer').classList.add('hidden'); // Ocultar el PDF al mostrar datos del estudiante
+        }
+
+        function openPDF() {
+            document.getElementById('pdfContainer').classList.remove('hidden'); // Mostrar el contenedor del PDF
+            document.getElementById('studentData').classList.add('hidden'); // Ocultar datos del estudiante
+        }
+    </script>
+</body>
+</html>

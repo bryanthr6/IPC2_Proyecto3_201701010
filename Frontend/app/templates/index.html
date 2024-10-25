@@ -1,0 +1,23 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cargar Datos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        function mostrarNombreArchivo(input) {
+            const label = document.getElementById('nombreArchivo');
+            label.style.display = 'block'; // Mostrar el label
+            label.textContent = input.files[0].name; // Mostrar el nombre del archivo
+        }
+    </script>
+</head>
+
+<body class="flex h-screen">
+    {% include 'sidebar.html' %} <!-- Incluir el sidebar -->
+
+    <h1> Hola Mundo </h1>
+</body>
+</html>
