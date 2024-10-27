@@ -13,4 +13,4 @@ def datos_estudiante(request):
     return render(request, 'ayuda.html')
 
 def ver_procesados(request):
-    return render(request, 'verprocesados.html')
+    return render(request, 'verprocesados.html' )
