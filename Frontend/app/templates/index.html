@@ -4,20 +4,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cargar Datos</title>
+    <title>Inicio</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        function mostrarNombreArchivo(input) {
-            const label = document.getElementById('nombreArchivo');
-            label.style.display = 'block'; // Mostrar el label
-            label.textContent = input.files[0].name; // Mostrar el nombre del archivo
-        }
-    </script>
 </head>
 
-<body class="flex h-screen">
+<body class="flex h-screen bg-gray-100 dark:bg-gray-900 font-sans justify-center items-center">
     {% include 'sidebar.html' %} <!-- Incluir el sidebar -->
 
-    <h1> Hola Mundo </h1>
+    <main role="main" class="flex flex-col items-center p-4">
+        <h1 class="text-3xl font-bold mb-6 text-center text-white">INICIO</h1>
+        <p class="text-lg text-center text-white">Seleccione una de las opciones del menú</p>
+    </main>
 </body>
 </html>

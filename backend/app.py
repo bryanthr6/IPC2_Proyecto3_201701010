@@ -17,9 +17,20 @@ palabras_negativas = ["malo", "pésimo", "triste", "molesto", "decepcionado", "e
 # Ruta para la prueba de mensaje individual
 @app.route('/mensaje_prueba', methods=['POST'])
 def mensaje_prueba():
-    # Parsear el XML recibido en la solicitud
+    # Verifica si se ha proporcionado al menos un archivo
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part"}), 400
+
+    file = request.files['file']
+
+    # Verifica si el archivo tiene contenido
+    if file.filename == '':
+        return jsonify({"error": "File is empty"}), 400
+
+    # Procesar el archivo XML
     try:
-        mensaje_xml = ET.fromstring(request.data)
+        # Parsear el XML recibido
+        mensaje_xml = ET.parse(file).getroot()
         texto_mensaje = mensaje_xml.text
 
         # Extraer datos usando expresiones regulares
@@ -31,7 +42,7 @@ def mensaje_prueba():
         palabras = texto_mensaje.lower().split()
         positivas = sum(1 for palabra in palabras if palabra in palabras_positivas)
         negativas = sum(1 for palabra in palabras if palabra in palabras_negativas)
-        
+
         # Determinar el sentimiento general
         total_palabras = positivas + negativas
         sentimiento_positivo = round((positivas / total_palabras) * 100, 2) if total_palabras else 0
@@ -53,6 +64,8 @@ def mensaje_prueba():
         respuesta_xml = ET.tostring(respuesta, encoding='unicode')
         return Response(respuesta_xml, mimetype='application/xml')
 
+    except ET.ParseError:
+        return jsonify({"error": "Error parsing XML file"}), 400
     except Exception as e:
         return {"error": "Error procesando el mensaje XML", "detalle": str(e)}, 400
 
@@ -66,42 +79,54 @@ mensajes = []
 @app.route('/cargar', methods=['POST'])
 def cargar():
     global diccionario, mensajes
+
+    # Verifica si se ha proporcionado al menos un archivo
     if 'file' not in request.files:
         return jsonify({"error": "No file part"}), 400
 
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
+    files = request.files.getlist('file')  # Obtén todos los archivos enviados
 
-    # Parsear el XML y extraer el diccionario y la lista de mensajes
-    tree = ET.parse(file)
-    root = tree.getroot()
+    # Procesar cada archivo XML en la lista
+    for file in files:
+        if file.filename == '':
+            return jsonify({"error": "One of the selected files is empty"}), 400
 
-    # Resetear las variables globales
-    diccionario = {"positivos": [], "negativos": [], "empresas": {}}
-    mensajes = []
+        # Parsear el XML y extraer el diccionario y la lista de mensajes
+        try:
+            tree = ET.parse(file)
+            root = tree.getroot()
 
-    # Procesar sentimientos
-    for palabra in root.find('.//sentimientos_positivos'):
-        diccionario["positivos"].append(palabra.text.strip().lower())
-    for palabra in root.find('.//sentimientos_negativos'):
-        diccionario["negativos"].append(palabra.text.strip().lower())
+            # Procesar sentimientos y combinarlos con los existentes
+            for palabra in root.find('.//sentimientos_positivos'):
+                diccionario["positivos"].append(palabra.text.strip().lower())
+            for palabra in root.find('.//sentimientos_negativos'):
+                diccionario["negativos"].append(palabra.text.strip().lower())
 
-    # Procesar empresas y servicios
-    for empresa in root.findall('.//empresa'):
-        nombre_empresa = empresa.find('nombre').text.strip().lower()
-        servicios = {}
-        for servicio in empresa.find('servicios'):
-            nombre_servicio = servicio.attrib['nombre'].strip().lower()
-            alias = [a.text.strip().lower() for a in servicio.findall('alias')]
-            servicios[nombre_servicio] = alias
-        diccionario["empresas"][nombre_empresa] = servicios
+            # Procesar empresas y servicios, asegurando que no se sobreescriban
+            for empresa in root.findall('.//empresa'):
+                nombre_empresa = empresa.find('nombre').text.strip().lower()
+                if nombre_empresa not in diccionario["empresas"]:
+                    diccionario["empresas"][nombre_empresa] = {}
 
-    # Procesar mensajes
-    for mensaje in root.findall('.//mensaje'):
-        mensajes.append(mensaje.text.strip())
+                for servicio in empresa.find('servicios'):
+                    nombre_servicio = servicio.attrib['nombre'].strip().lower()
+                    alias = [a.text.strip().lower() for a in servicio.findall('alias')]
 
-    return jsonify({"message": "Archivo cargado y procesado exitosamente"}), 200
+                    if nombre_servicio not in diccionario["empresas"][nombre_empresa]:
+                        diccionario["empresas"][nombre_empresa][nombre_servicio] = alias
+                    else:
+                        # Añade alias nuevos al servicio existente
+                        diccionario["empresas"][nombre_empresa][nombre_servicio].extend(alias)
+
+            # Procesar mensajes y añadirlos a la lista global
+            for mensaje in root.findall('.//mensaje'):
+                mensajes.append(mensaje.text.strip())
+
+        except ET.ParseError:
+            return jsonify({"error": f"Error parsing file {file.filename}"}), 400
+
+    return jsonify({"message": "Archivos cargados y procesados exitosamente"}), 200
+
 
 
 # 2. Endpoint para analizar mensajes
@@ -219,40 +244,135 @@ def generar_respuesta():
     xml_response = ET.tostring(lista_respuestas, encoding="utf-8", method="xml")
     return Response(xml_response, mimetype="application/xml")
 
+# Endpoint para obtener un resumen de mensajes clasificados por fecha y empresa
 @app.route('/resumen_fecha', methods=['POST'])
-def resumen_fecha():
-    request_data = request.get_json()
-    fecha = request_data.get("fecha")
-    empresa = request_data.get("empresa")  # Puede ser 'todas' o el nombre de la empresa
+def resumen_por_fecha():
+    # Obtener datos JSON de la solicitud
+    data = request.get_json()
 
-    total_mensajes = 0
-    total_positivos = 0
-    total_negativos = 0
-    total_neutros = 0
+    # Comprobar que se proporciona la fecha
+    if not data or 'fecha' not in data:
+        return jsonify({"error": "Debe proporcionar una fecha en el formato 'dd/mm/yyyy'."}), 400
 
-    # Suponiendo que tienes una estructura donde se almacenan los mensajes y sus fechas y sentimientos
-    for mensaje in mensajes:  # O tu estructura que contiene todos los mensajes
-        # Asegúrate de que cada mensaje tenga una fecha y un sentimiento, ajusta según sea necesario
-        mensaje_fecha = mensaje["fecha"]  # Debes tener esta estructura
-        mensaje_sentimiento = mensaje["sentimiento"]  # Debes tener esta estructura
+    fecha = data["fecha"]
+    empresa = data.get("empresa", "").lower()  # Empresa opcional
 
-        if mensaje_fecha == fecha and (empresa == "todas" or mensaje["empresa"] == empresa):
-            total_mensajes += 1
-            if mensaje_sentimiento == "positivo":
-                total_positivos += 1
-            elif mensaje_sentimiento == "negativo":
-                total_negativos += 1
-            elif mensaje_sentimiento == "neutro":
-                total_neutros += 1
-
-    resultado = {
-        "total_mensajes": total_mensajes,
-        "total_positivos": total_positivos,
-        "total_negativos": total_negativos,
-        "total_neutros": total_neutros
+    # Inicializar los contadores para el resumen
+    resumen = {
+        "total_mensajes": 0,
+        "positivos": 0,
+        "negativos": 0,
+        "neutros": 0,
+        "fecha": fecha,
+        "empresa": empresa if empresa else "todas las empresas"
     }
 
-    return jsonify(resultado), 200
+    for mensaje in mensajes:
+        # Verificar si el mensaje contiene la fecha solicitada
+        fecha_en_mensaje = re.search(r"\d{2}/\d{2}/\d{4}", mensaje)
+        if not fecha_en_mensaje or fecha_en_mensaje.group() != fecha:
+            continue
+
+        # Si se especifica una empresa, verificar si está mencionada en el mensaje
+        if empresa and empresa not in mensaje.lower():
+            continue
+
+        # Clasificar el mensaje en positivo, negativo o neutro
+        mensaje_normalizado = mensaje.lower()
+        palabras = mensaje_normalizado.split()
+        positivos = sum(1 for palabra in palabras if palabra in diccionario["positivos"])
+        negativos = sum(1 for palabra in palabras if palabra in diccionario["negativos"])
+
+        # Determinar el sentimiento del mensaje y actualizar los contadores
+        if positivos > negativos:
+            resumen["positivos"] += 1
+        elif negativos > positivos:
+            resumen["negativos"] += 1
+        else:
+            resumen["neutros"] += 1
+
+        # Contar el mensaje en el total
+        resumen["total_mensajes"] += 1
+
+    # Devolver el resumen como JSON
+    return jsonify(resumen), 200
+
+@app.route('/resumen_rango_fechas', methods=['POST'])
+def resumen_por_rango_fechas():
+    data = request.get_json()
+
+    # Verificar que se proporcionen las fechas de inicio y fin
+    if 'fecha_inicio' not in data or 'fecha_fin' not in data:
+        return jsonify({"error": "Debe proporcionar 'fecha_inicio' y 'fecha_fin' en el formato 'dd/mm/yyyy'."}), 400
+
+    fecha_inicio = datetime.strptime(data["fecha_inicio"], "%d/%m/%Y")
+    fecha_fin = datetime.strptime(data["fecha_fin"], "%d/%m/%Y")
+    empresa = data.get("empresa", "").lower()  # Empresa opcional
+
+    # Inicializar el resumen para almacenar resultados por cada fecha
+    resumen = {}
+
+    # Procesar los mensajes y clasificarlos en el rango de fechas
+    for mensaje in mensajes:
+        fecha_en_mensaje = re.search(r"\d{2}/\d{2}/\d{4}", mensaje)
+        if not fecha_en_mensaje:
+            continue
+
+        fecha_mensaje = datetime.strptime(fecha_en_mensaje.group(), "%d/%m/%Y")
+        
+        # Saltar mensajes fuera del rango de fechas
+        if not (fecha_inicio <= fecha_mensaje <= fecha_fin):
+            continue
+
+        # Inicializar la estructura para cada fecha
+        fecha_str = fecha_mensaje.strftime("%d/%m/%Y")
+        if fecha_str not in resumen:
+            resumen[fecha_str] = {}
+
+        empresa_key = empresa if empresa else "todas_las_empresas"
+        if empresa_key not in resumen[fecha_str]:
+            resumen[fecha_str][empresa_key] = {
+                "total": 0,
+                "positivo": 0,
+                "negativo": 0,
+                "neutro": 0
+            }
+
+        # Clasificar el mensaje
+        mensaje_normalizado = mensaje.lower()
+        palabras = mensaje_normalizado.split()
+        positivos = sum(1 for palabra in palabras if palabra in diccionario["positivos"])
+        negativos = sum(1 for palabra in palabras if palabra in diccionario["negativos"])
+
+        # Determinar el sentimiento
+        if positivos > negativos:
+            sentimiento = "positivo"
+        elif negativos > positivos:
+            sentimiento = "negativo"
+        else:
+            sentimiento = "neutro"
+
+        # Incrementar el conteo para la fecha y empresa actual
+        resumen[fecha_str][empresa_key]["total"] += 1
+        resumen[fecha_str][empresa_key][sentimiento] += 1
+
+    return jsonify(resumen), 200
+
+
+
+
+# Endpoint para limpiar todos los datos almacenados
+@app.route('/limpiar', methods=['DELETE'])
+def limpiar_datos():
+    global diccionario, mensajes, empresas_analizadas
+
+    # Resetear las estructuras de datos a sus valores iniciales
+    diccionario = {"positivos": [], "negativos": [], "empresas": {}}
+    mensajes = []
+    empresas_analizadas = defaultdict(lambda: {'positivos': 0, 'negativos': 0, 'servicios': defaultdict(lambda: {'positivos': 0, 'negativos': 0})})
+
+    return jsonify({"message": "Datos limpiados exitosamente"}), 200
+
 
 
 if __name__ == '__main__':
